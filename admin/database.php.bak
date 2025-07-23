@@ -1,0 +1,288 @@
+<?php
+$relative_path = '../../';
+require_once $relative_path . 'includes/header.php';
+
+// Check if user is logged in and has admin role
+if (!checkAccess(['admin'])) {
+    $_SESSION['alert'] = showAlert('You do not have permission to access this page.', 'danger');
+    redirect($relative_path . 'dashboard.php');
+}
+
+// Process database export
+if (isset($_POST['export_db'])) {
+    // Set time limit to allow for large database exports
+    set_time_limit(300);
+    
+    // Clean output buffer
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Get database credentials
+    $db_host = DB_HOST;
+    $db_user = DB_USER;
+    $db_pass = DB_PASS;
+    $db_name = DB_NAME;
+    
+    // Generate filename with timestamp
+    $timestamp = date('Y-m-d_H-i-s');
+    $filename = "localenroll_backup_{$timestamp}.sql";
+    
+    // Set headers for download
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    
+    // Use mysqldump if available
+    $output = null;
+    $return_var = null;
+    $command = "mysqldump --host=$db_host --user=$db_user " . ($db_pass ? "--password=$db_pass " : "") . "$db_name";
+    
+    // Try to use exec for mysqldump
+    if (function_exists('exec')) {
+        exec($command, $output, $return_var);
+        if ($return_var === 0) {
+            echo implode("\n", $output);
+            exit;
+        }
+    }
+    
+    // If exec fails or is not available, use PHP to export
+    $tables = [];
+    $result = mysqli_query($conn, 'SHOW TABLES');
+    while ($row = mysqli_fetch_row($result)) {
+        $tables[] = $row[0];
+    }
+    
+    // Export header
+    echo "-- LocalEnroll Pro Database Backup\n";
+    echo "-- Generated: " . date('Y-m-d H:i:s') . "\n";
+    echo "-- Database: " . $db_name . "\n\n";
+    
+    // Export structure and data for each table
+    foreach ($tables as $table) {
+        // Get table structure
+        $result = mysqli_query($conn, "SHOW CREATE TABLE `$table`");
+        $row = mysqli_fetch_row($result);
+        echo "-- Table structure for table `$table`\n";
+        echo "DROP TABLE IF EXISTS `$table`;\n";
+        echo $row[1] . ";\n\n";
+        
+        // Get table data
+        $result = mysqli_query($conn, "SELECT * FROM `$table`");
+        $num_fields = mysqli_num_fields($result);
+        $num_rows = mysqli_num_rows($result);
+        
+        if ($num_rows > 0) {
+            echo "-- Dumping data for table `$table`\n";
+            
+            $field_type = [];
+            $fields = mysqli_fetch_fields($result);
+            foreach ($fields as $field) {
+                $field_type[] = $field->type;
+            }
+            
+            // Build INSERT statements
+            $insert = "INSERT INTO `$table` VALUES ";
+            $counter = 0;
+            
+            while ($row = mysqli_fetch_row($result)) {
+                if ($counter % 100 == 0) {
+                    if ($counter > 0) {
+                        echo ";\n";
+                    }
+                    echo $insert . "\n";
+                } else {
+                    echo ",\n";
+                }
+                
+                echo "(";
+                for ($i = 0; $i < $num_fields; $i++) {
+                    if ($row[$i] === null) {
+                        echo "NULL";
+                    } else {
+                        // Quote string values
+                        if (is_string($row[$i])) {
+                            echo "'" . mysqli_real_escape_string($conn, $row[$i]) . "'";
+                        } else {
+                            echo $row[$i];
+                        }
+                    }
+                    if ($i < ($num_fields - 1)) {
+                        echo ",";
+                    }
+                }
+                echo ")";
+                $counter++;
+            }
+            
+            if ($counter > 0) {
+                echo ";\n";
+            }
+            echo "\n";
+        }
+    }
+    
+    exit;
+}
+
+// Process database import
+if (isset($_POST['import_db']) && isset($_FILES['sql_file'])) {
+    $file = $_FILES['sql_file'];
+    
+    // Check for errors
+    if ($file['error'] === UPLOAD_ERR_OK) {
+        $temp_file = $file['tmp_name'];
+        $file_content = file_get_contents($temp_file);
+        
+        if ($file_content) {
+            // Split file into individual queries
+            $queries = explode(';', $file_content);
+            
+            // Begin transaction
+            mysqli_autocommit($conn, false);
+            $success = true;
+            
+            foreach ($queries as $query) {
+                $query = trim($query);
+                if (!empty($query)) {
+                    $result = mysqli_query($conn, $query);
+                    if (!$result) {
+                        $success = false;
+                        break;
+                    }
+                }
+            }
+            
+            // Commit or rollback transaction
+            if ($success) {
+                mysqli_commit($conn);
+                $_SESSION['alert'] = showAlert('Database imported successfully.', 'success');
+                
+                // Log action
+                logAction($_SESSION['user_id'], 'IMPORT', 'Imported database from SQL file');
+            } else {
+                mysqli_rollback($conn);
+                $_SESSION['alert'] = showAlert('Error importing database: ' . mysqli_error($conn), 'danger');
+            }
+        } else {
+            $_SESSION['alert'] = showAlert('Error reading SQL file.', 'danger');
+        }
+    } else {
+        $_SESSION['alert'] = showAlert('Error uploading file: ' . $file['error'], 'danger');
+    }
+}
+
+// Process database export to Excel
+if (isset($_POST['export_excel'])) {
+    // Clean output buffer
+    if (ob_get_level()) {
+        ob_end_clean();
+    }
+    
+    // Get tables to export
+    $tables = [];
+    $result = mysqli_query($conn, 'SHOW TABLES');
+    while ($row = mysqli_fetch_row($result)) {
+        $tables[] = $row[0];
+    }
+    
+    // Generate filename with timestamp
+    $timestamp = date('Y-m-d_H-i-s');
+    $filename = "localenroll_export_{$timestamp}.csv";
+    
+    // Set headers for download
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    
+    // Create output handle
+    $output = fopen('php://output', 'w');
+    
+    // Export each table to CSV
+    foreach ($tables as $table) {
+        // Add table header
+        fputcsv($output, ["Table: $table"]);
+        
+        // Get table columns
+        $result = mysqli_query($conn, "SHOW COLUMNS FROM `$table`");
+        $columns = [];
+        while ($row = mysqli_fetch_assoc($result)) {
+            $columns[] = $row['Field'];
+        }
+        
+        // Write column headers
+        fputcsv($output, $columns);
+        
+        // Get table data
+        $result = mysqli_query($conn, "SELECT * FROM `$table`");
+        while ($row = mysqli_fetch_row($result)) {
+            fputcsv($output, $row);
+        }
+        
+        // Add empty row between tables
+        fputcsv($output, []);
+    }
+    
+    fclose($output);
+    exit;
+}
+?>
+
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Database Management</h1>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Export Database</h5>
+            </div>
+            <div class="card-body">
+                <p>Export the entire database as an SQL file for backup purposes.</p>
+                
+                <form method="post" action="">
+                    <button type="submit" name="export_db" class="btn btn-primary">
+                        <i class="fas fa-download me-1"></i> Export SQL
+                    </button>
+                    
+                    <button type="submit" name="export_excel" class="btn btn-success ms-2">
+                        <i class="fas fa-file-excel me-1"></i> Export CSV
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">Import Database</h5>
+            </div>
+            <div class="card-body">
+                <p>Import a database from an SQL file. <strong>Warning:</strong> This will overwrite existing data.</p>
+                
+                <form method="post" action="" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="sql_file" class="form-label">SQL File</label>
+                        <input type="file" class="form-control" id="sql_file" name="sql_file" accept=".sql" required>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="confirm_import" required>
+                        <label class="form-check-label" for="confirm_import">
+                            I understand that this will overwrite existing data
+                        </label>
+                    </div>
+                    
+                    <button type="submit" name="import_db" class="btn btn-danger">
+                        <i class="fas fa-upload me-1"></i> Import Database
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<?php require_once $relative_path . 'includes/footer.php'; ?> 

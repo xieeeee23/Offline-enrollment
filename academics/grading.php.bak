@@ -1,0 +1,480 @@
+<?php
+$title = 'Grading System';
+$page_header = 'Grading System';
+$relative_path = '../../';
+require_once $relative_path . 'includes/header.php';
+
+// Check if user has necessary permissions
+if (!checkAccess(['admin', 'teacher', 'registrar'])) {
+    $_SESSION['alert'] = showAlert('You do not have permission to access this page.', 'danger');
+    redirect($relative_path . 'dashboard.php');
+    exit();
+}
+
+// Check if tables exist
+$check_tables = [
+    'grading_periods' => false,
+    'subjects' => false,
+    'class_records' => false,
+    'student_grades' => false
+];
+
+foreach ($check_tables as $table => $exists) {
+    $check_query = "SHOW TABLES LIKE '$table'";
+    $check_result = mysqli_query($conn, $check_query);
+    $check_tables[$table] = mysqli_num_rows($check_result) > 0;
+}
+
+$all_tables_exist = !in_array(false, $check_tables);
+
+// Get teacher ID if user is a teacher
+$teacher_id = null;
+if ($_SESSION['role'] === 'teacher') {
+    $teacher_query = "SELECT id FROM teachers WHERE user_id = ?";
+    $stmt = mysqli_prepare($conn, $teacher_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['user_id']);
+    mysqli_stmt_execute($stmt);
+    $teacher_result = mysqli_stmt_get_result($stmt);
+    
+    if ($row = mysqli_fetch_assoc($teacher_result)) {
+        $teacher_id = $row['id'];
+    }
+}
+
+// Get all subjects
+$subjects = [];
+$subjects_query = "SELECT * FROM subjects ORDER BY grade_level, name";
+$subjects_result = mysqli_query($conn, $subjects_query);
+
+if ($subjects_result && mysqli_num_rows($subjects_result) > 0) {
+    while ($row = mysqli_fetch_assoc($subjects_result)) {
+        $subjects[] = $row;
+    }
+}
+
+// Get all sections
+$sections = [];
+$sections_query = "SELECT DISTINCT section FROM students ORDER BY section";
+$sections_result = mysqli_query($conn, $sections_query);
+
+if ($sections_result && mysqli_num_rows($sections_result) > 0) {
+    while ($row = mysqli_fetch_assoc($sections_result)) {
+        $sections[] = $row['section'];
+    }
+}
+
+// Get school years (current year - 2 to current year + 2)
+$current_year = (int) date('Y');
+$school_years = [];
+for ($i = $current_year - 2; $i <= $current_year + 2; $i++) {
+    $school_years[] = $i . '-' . ($i + 1);
+}
+
+// Get semesters
+$semesters = ['First', 'Second'];
+
+// Process form submission to enter grades
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['enter_grades'])) {
+    $subject_id = (int) $_POST['subject_id'];
+    $section = cleanInput($_POST['section']);
+    $school_year = cleanInput($_POST['school_year']);
+    $semester = cleanInput($_POST['semester']);
+    
+    // Use direct header redirect to avoid URL encoding issues
+    $redirect_url = BASE_URL . 'modules/academics/enter_grades.php?subject=' . $subject_id . 
+             '&section=' . urlencode($section) . 
+             '&year=' . urlencode($school_year) . 
+             '&semester=' . urlencode($semester);
+    
+    header("Location: " . $redirect_url);
+    exit();
+}
+
+// Process form submission to view grades
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['view_grades'])) {
+    $subject_id = (int) $_POST['subject_id'];
+    $section = cleanInput($_POST['section']);
+    $school_year = cleanInput($_POST['school_year']);
+    $semester = cleanInput($_POST['semester']);
+    
+    // Use direct header redirect to avoid URL encoding issues
+    $redirect_url = BASE_URL . 'modules/academics/view_grades.php?subject=' . $subject_id . 
+             '&section=' . urlencode($section) . 
+             '&year=' . urlencode($school_year) . 
+             '&semester=' . urlencode($semester);
+    
+    header("Location: " . $redirect_url);
+    exit();
+}
+?>
+
+<div class="container-fluid px-4">
+    <h1 class="mt-4"><?php echo $page_header; ?></h1>
+    <ol class="breadcrumb mb-4">
+        <li class="breadcrumb-item"><a href="<?php echo $relative_path; ?>dashboard.php">Dashboard</a></li>
+        <li class="breadcrumb-item active">Grading System</li>
+    </ol>
+    
+    <?php if (isset($_SESSION['alert'])) echo $_SESSION['alert']; unset($_SESSION['alert']); ?>
+    
+    <?php if (!$all_tables_exist && checkAccess(['admin'])): ?>
+    <div class="alert alert-warning">
+        <h4 class="alert-heading"><i class="fas fa-exclamation-triangle me-2"></i> Setup Required</h4>
+        <p>The grading system tables have not been fully set up. Please run the setup script first.</p>
+        <hr>
+        <p class="mb-0">
+            <a href="<?php echo $relative_path; ?>setup_grading_system.php" class="btn btn-primary">
+                <i class="fas fa-cogs me-1"></i> Run Setup Script
+            </a>
+        </p>
+        
+        <div class="mt-3">
+            <h5>Missing Tables:</h5>
+            <ul>
+                <?php foreach ($check_tables as $table => $exists): ?>
+                    <?php if (!$exists): ?>
+                    <li><?php echo $table; ?></li>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    </div>
+    <?php else: ?>
+    
+    <div class="row">
+        <div class="col-xl-6 col-md-12">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0"><i class="fas fa-edit me-2"></i> Enter Grades</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="" id="enterGradesForm">
+                        <div class="mb-3">
+                            <label for="subject_id" class="form-label">Subject</label>
+                            <select class="form-select" id="subject_id" name="subject_id" required>
+                                <option value="">Select Subject</option>
+                                <?php foreach ($subjects as $subject): ?>
+                                <option value="<?php echo $subject['id']; ?>">
+                                    <?php echo htmlspecialchars($subject['code'] . ' - ' . $subject['name']); ?>
+                                    <?php if (!empty($subject['grade_level'])): ?>
+                                        (<?php echo htmlspecialchars($subject['grade_level']); ?>)
+                                    <?php endif; ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="invalid-feedback">Please select a subject.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="section" class="form-label">Section</label>
+                            <select class="form-select" id="section" name="section" required>
+                                <option value="">Select Section</option>
+                                <?php foreach ($sections as $section): ?>
+                                <option value="<?php echo htmlspecialchars($section); ?>">
+                                    <?php echo htmlspecialchars($section); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="invalid-feedback">Please select a section.</div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="school_year" class="form-label">School Year</label>
+                                <select class="form-select" id="school_year" name="school_year" required>
+                                    <option value="">Select School Year</option>
+                                    <?php foreach ($school_years as $year): ?>
+                                    <option value="<?php echo htmlspecialchars($year); ?>" <?php echo ($year == $current_year . '-' . ($current_year + 1)) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($year); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Please select a school year.</div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="semester" class="form-label">Semester</label>
+                                <select class="form-select" id="semester" name="semester" required>
+                                    <option value="">Select Semester</option>
+                                    <?php foreach ($semesters as $sem): ?>
+                                    <option value="<?php echo htmlspecialchars($sem); ?>">
+                                        <?php echo htmlspecialchars($sem); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Please select a semester.</div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" name="enter_grades" class="btn btn-primary">
+                            <i class="fas fa-pen me-1"></i> Enter Grades
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-xl-6 col-md-12">
+            <div class="card mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="card-title mb-0"><i class="fas fa-search me-2"></i> View Grades</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="" id="viewGradesForm">
+                        <div class="mb-3">
+                            <label for="subject_id_view" class="form-label">Subject</label>
+                            <select class="form-select" id="subject_id_view" name="subject_id" required>
+                                <option value="">Select Subject</option>
+                                <?php foreach ($subjects as $subject): ?>
+                                <option value="<?php echo $subject['id']; ?>">
+                                    <?php echo htmlspecialchars($subject['code'] . ' - ' . $subject['name']); ?>
+                                    <?php if (!empty($subject['grade_level'])): ?>
+                                        (<?php echo htmlspecialchars($subject['grade_level']); ?>)
+                                    <?php endif; ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="invalid-feedback">Please select a subject.</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="section_view" class="form-label">Section</label>
+                            <select class="form-select" id="section_view" name="section" required>
+                                <option value="">Select Section</option>
+                                <?php foreach ($sections as $section): ?>
+                                <option value="<?php echo htmlspecialchars($section); ?>">
+                                    <?php echo htmlspecialchars($section); ?>
+                                </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <div class="invalid-feedback">Please select a section.</div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="school_year_view" class="form-label">School Year</label>
+                                <select class="form-select" id="school_year_view" name="school_year" required>
+                                    <option value="">Select School Year</option>
+                                    <?php foreach ($school_years as $year): ?>
+                                    <option value="<?php echo htmlspecialchars($year); ?>" <?php echo ($year == $current_year . '-' . ($current_year + 1)) ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($year); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Please select a school year.</div>
+                            </div>
+                            
+                            <div class="col-md-6">
+                                <label for="semester_view" class="form-label">Semester</label>
+                                <select class="form-select" id="semester_view" name="semester" required>
+                                    <option value="">Select Semester</option>
+                                    <?php foreach ($semesters as $sem): ?>
+                                    <option value="<?php echo htmlspecialchars($sem); ?>">
+                                        <?php echo htmlspecialchars($sem); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="invalid-feedback">Please select a semester.</div>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" name="view_grades" class="btn btn-info">
+                            <i class="fas fa-search me-1"></i> View Grades
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Basic Grading Card -->
+    <div class="col-xl-6 col-md-12">
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-calculator me-2"></i> Basic Grading Calculator</h5>
+                </div>
+                <div class="card-body">
+                <form id="basicGradingForm">
+                    <div class="mb-3">
+                        <label for="written_works" class="form-label">Written Works (30%)</label>
+                        <input type="number" class="form-control" id="written_works" name="written_works" min="0" max="100" step="0.01" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="performance_tasks" class="form-label">Performance Tasks (50%)</label>
+                        <input type="number" class="form-control" id="performance_tasks" name="performance_tasks" min="0" max="100" step="0.01" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="quarterly_assessment" class="form-label">Quarterly Assessment (20%)</label>
+                        <input type="number" class="form-control" id="quarterly_assessment" name="quarterly_assessment" min="0" max="100" step="0.01" required>
+                    </div>
+                    
+                    <div class="d-grid">
+                        <button type="button" class="btn btn-success" id="calculateGradeBtn">
+                            <i class="fas fa-calculator me-1"></i> Calculate Grade
+                        </button>
+                    </div>
+                    
+                    <div class="mt-4 result-container d-none">
+                        <div class="alert alert-info">
+                            <h5 class="alert-heading">Grade Calculation Result</h5>
+                    <div class="row">
+                        <div class="col-md-6">
+                                    <p class="mb-1"><strong>Initial Grade:</strong> <span id="initialGrade">0.00</span></p>
+                                    <p class="mb-1"><strong>Transmuted Grade:</strong> <span id="transmutedGrade">0.00</span></p>
+                        </div>
+                        <div class="col-md-6">
+                                    <p class="mb-1"><strong>Remarks:</strong> <span id="remarks">N/A</span></p>
+                                    <p class="mb-1"><strong>Letter Grade:</strong> <span id="letterGrade">N/A</span></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Form validation for Enter Grades form
+document.addEventListener('DOMContentLoaded', function() {
+    // Enter Grades form validation
+    const enterGradesForm = document.getElementById('enterGradesForm');
+    if (enterGradesForm) {
+        enterGradesForm.addEventListener('submit', function(event) {
+            if (!validateForm('enterGradesForm')) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+    }
+    
+    // View Grades form validation
+    const viewGradesForm = document.getElementById('viewGradesForm');
+    if (viewGradesForm) {
+        viewGradesForm.addEventListener('submit', function(event) {
+            if (!validateForm('viewGradesForm')) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+    }
+    
+    // Basic Grading Calculator
+    const calculateGradeBtn = document.getElementById('calculateGradeBtn');
+    if (calculateGradeBtn) {
+        calculateGradeBtn.addEventListener('click', function() {
+            calculateGrade();
+        });
+        
+        // Add enter key support
+        document.getElementById('basicGradingForm').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                calculateGrade();
+            }
+        });
+    }
+    
+    // Calculate grade function
+    function calculateGrade() {
+        const writtenWorks = parseFloat(document.getElementById('written_works').value) || 0;
+        const performanceTasks = parseFloat(document.getElementById('performance_tasks').value) || 0;
+        const quarterlyAssessment = parseFloat(document.getElementById('quarterly_assessment').value) || 0;
+        
+        // Validate inputs
+        if (writtenWorks < 0 || writtenWorks > 100 || 
+            performanceTasks < 0 || performanceTasks > 100 || 
+            quarterlyAssessment < 0 || quarterlyAssessment > 100) {
+            alert('Please enter valid scores between 0 and 100.');
+            return;
+        }
+        
+        // Calculate weighted grade
+        const initialGrade = (writtenWorks * 0.3) + (performanceTasks * 0.5) + (quarterlyAssessment * 0.2);
+        const roundedGrade = Math.round(initialGrade * 100) / 100; // Round to 2 decimal places
+        
+        // Transmute grade to 100-point scale
+        let transmutedGrade = 0;
+        if (roundedGrade >= 96) transmutedGrade = 100;
+        else if (roundedGrade >= 90) transmutedGrade = 95;
+        else if (roundedGrade >= 85) transmutedGrade = 90;
+        else if (roundedGrade >= 80) transmutedGrade = 85;
+        else if (roundedGrade >= 75) transmutedGrade = 80;
+        else if (roundedGrade >= 70) transmutedGrade = 75;
+        else if (roundedGrade >= 65) transmutedGrade = 70;
+        else if (roundedGrade >= 60) transmutedGrade = 65;
+        else if (roundedGrade >= 55) transmutedGrade = 60;
+        else if (roundedGrade >= 50) transmutedGrade = 55;
+        else if (roundedGrade >= 45) transmutedGrade = 50;
+        else if (roundedGrade >= 40) transmutedGrade = 45;
+        else if (roundedGrade >= 35) transmutedGrade = 40;
+        else if (roundedGrade >= 30) transmutedGrade = 35;
+        else if (roundedGrade >= 25) transmutedGrade = 30;
+        else if (roundedGrade >= 20) transmutedGrade = 25;
+        else if (roundedGrade >= 15) transmutedGrade = 20;
+        else if (roundedGrade >= 10) transmutedGrade = 15;
+        else if (roundedGrade >= 5) transmutedGrade = 10;
+        else transmutedGrade = 5;
+        
+        // Determine remarks and letter grade
+        let remarks = '';
+        let letterGrade = '';
+        
+        if (transmutedGrade >= 75) {
+            remarks = 'Passed';
+            if (transmutedGrade >= 90) letterGrade = 'A';
+            else if (transmutedGrade >= 85) letterGrade = 'B+';
+            else if (transmutedGrade >= 80) letterGrade = 'B';
+            else letterGrade = 'C';
+        } else {
+            remarks = 'Failed';
+            letterGrade = 'F';
+        }
+        
+        // Display results
+        document.getElementById('initialGrade').textContent = roundedGrade.toFixed(2);
+        document.getElementById('transmutedGrade').textContent = transmutedGrade.toFixed(0);
+        document.getElementById('remarks').textContent = remarks;
+        document.getElementById('letterGrade').textContent = letterGrade;
+        
+        // Show result container
+        document.querySelector('.result-container').classList.remove('d-none');
+    }
+    
+    // Form validation function
+    function validateForm(formId) {
+        const form = document.getElementById(formId);
+        let isValid = true;
+        
+        // Check required fields
+        const requiredFields = form.querySelectorAll('[required]');
+        requiredFields.forEach(field => {
+            if (!field.value) {
+                field.classList.add('is-invalid');
+                isValid = false;
+            } else {
+                field.classList.remove('is-invalid');
+                field.classList.add('is-valid');
+            }
+            
+            // Add event listener to remove invalid class when user enters data
+            field.addEventListener('change', function() {
+                if (this.value) {
+                    this.classList.remove('is-invalid');
+                    this.classList.add('is-valid');
+                } else {
+                    this.classList.add('is-invalid');
+                    this.classList.remove('is-valid');
+                }
+            });
+        });
+        
+        return isValid;
+    }
+});
+</script>
+
+<?php require_once $relative_path . 'includes/footer.php'; ?> 
