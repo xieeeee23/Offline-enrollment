@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "385775285526",
+    "project_id": "smartbite-54b19",
+    "storage_bucket": "smartbite-54b19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:385775285526:android:aa53d6d88efd872624cc37",
+        "android_client_info": {
+          "package_name": "com.smartbite"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcjIZdl2InFIDpQt-7laktvkiYDSQCI48"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

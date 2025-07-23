@@ -1,0 +1,6 @@
+Name,Type,RequiredFor,Description,IsRequired
+Birth Certificate,document,all,Official birth certificate,Yes
+Form 137,document,undergraduate,Official high school transcript,Yes
+Good Moral Character,document,all,Certificate of good moral character,Yes
+Medical Certificate,document,all,Recent medical certificate,Yes
+Graduation Certificate,document,graduate,College graduation certificate,Yes

@@ -1,0 +1,34 @@
+2025-07-02 11:52:04 - get_grade_levels.php called - {"education_level_id":"2"}
+2025-07-02 11:52:04 - Processing education_level_id - 2
+2025-07-02 11:52:04 - Found education level - {"id":2,"level_name":"Elementary","description":"Primary education from grades 1 to 6","grade_min":1,"grade_max":6,"age_min":6,"age_max":12,"display_order":2,"status":"Active","created_at":"2025-07-01 22:41:28","updated_at":"2025-07-01 22:41:28"}
+2025-07-02 11:52:04 - Processing Elementary level
+2025-07-02 11:52:04 - Returning grade levels - [{"value":"1","label":"Grade 1"},{"value":"2","label":"Grade 2"},{"value":"3","label":"Grade 3"},{"value":"4","label":"Grade 4"},{"value":"5","label":"Grade 5"},{"value":"6","label":"Grade 6"}]
+2025-07-02 11:53:31 - get_grade_levels.php called - {"education_level_id":"3"}
+2025-07-02 11:53:31 - Processing education_level_id - 3
+2025-07-02 11:53:31 - Found education level - {"id":3,"level_name":"Junior High School","description":"Secondary education from grades 7 to 10","grade_min":7,"grade_max":10,"age_min":12,"age_max":16,"display_order":3,"status":"Active","created_at":"2025-07-01 22:41:28","updated_at":"2025-07-01 22:41:28"}
+2025-07-02 11:53:31 - Processing Junior High School level
+2025-07-02 11:53:31 - Returning grade levels - [{"value":"7","label":"Grade 7"},{"value":"8","label":"Grade 8"},{"value":"9","label":"Grade 9"},{"value":"10","label":"Grade 10"}]
+2025-07-02 11:55:47 - get_grade_levels.php called - {"education_level_id":"1"}
+2025-07-02 11:55:47 - Processing education_level_id - 1
+2025-07-02 11:55:47 - Found education level - {"id":1,"level_name":"Kindergarten","description":"Early childhood education before elementary school","grade_min":0,"grade_max":0,"age_min":5,"age_max":6,"display_order":1,"status":"Active","created_at":"2025-07-01 22:41:28","updated_at":"2025-07-01 22:41:28"}
+2025-07-02 11:55:47 - Processing Kindergarten level
+2025-07-02 11:55:47 - Returning grade levels - [{"value":"K","label":"Kindergarten"}]
+2025-07-02 11:55:51 - get_grade_levels.php called - {"education_level_id":"2"}
+2025-07-02 11:55:51 - Processing education_level_id - 2
+2025-07-02 11:55:51 - Found education level - {"id":2,"level_name":"Elementary","description":"Primary education from grades 1 to 6","grade_min":1,"grade_max":6,"age_min":6,"age_max":12,"display_order":2,"status":"Active","created_at":"2025-07-01 22:41:28","updated_at":"2025-07-01 22:41:28"}
+2025-07-02 11:55:51 - Processing Elementary level
+2025-07-02 11:55:51 - Returning grade levels - [{"value":"1","label":"Grade 1"},{"value":"2","label":"Grade 2"},{"value":"3","label":"Grade 3"},{"value":"4","label":"Grade 4"},{"value":"5","label":"Grade 5"},{"value":"6","label":"Grade 6"}]
+2025-07-02 11:56:26 - get_grade_levels.php called - {"education_level_id":"3"}
+2025-07-02 11:56:26 - Processing education_level_id - 3
+2025-07-02 11:56:26 - Found education level - {"id":3,"level_name":"Junior High School","description":"Secondary education from grades 7 to 10","grade_min":7,"grade_max":10,"age_min":12,"age_max":16,"display_order":3,"status":"Active","created_at":"2025-07-01 22:41:28","updated_at":"2025-07-01 22:41:28"}
+2025-07-02 11:56:26 - Processing Junior High School level
+2025-07-02 11:56:26 - Returning grade levels - [{"value":"7","label":"Grade 7"},{"value":"8","label":"Grade 8"},{"value":"9","label":"Grade 9"},{"value":"10","label":"Grade 10"}]
+[2025-07-02 11:57:10] Requested education_level_id: "1"
+[2025-07-02 11:57:10] Query: "SELECT name FROM education_levels WHERE id = ? AND status = 'Active'"
+[2025-07-02 11:57:10] Error: "Error in get_grade_levels.php: Unknown column 'name' in 'field list'"
+[2025-07-02 11:57:12] Requested education_level_id: "3"
+[2025-07-02 11:57:12] Query: "SELECT name FROM education_levels WHERE id = ? AND status = 'Active'"
+[2025-07-02 11:57:12] Error: "Error in get_grade_levels.php: Unknown column 'name' in 'field list'"
+[2025-07-02 11:58:32] Requested education_level_id: "2"
+[2025-07-02 11:58:32] Query: "SELECT name FROM education_levels WHERE id = ? AND status = 'Active'"
+[2025-07-02 11:58:32] Error: "Error in get_grade_levels.php: Unknown column 'name' in 'field list'"
